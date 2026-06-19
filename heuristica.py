@@ -198,7 +198,6 @@ def ils(p, k=5, tempo_max=60, estagnacao_max=500, fator_reset=0.2):
     inicio = time.time()
 
     while iter_sem_melhora < estagnacao_max and (time.time() - inicio) < tempo_max:
-
         # --- 6. Perturbação (com índice de corte) ---
         perm_perturbada, corte_pert = perturbacao(perm_atual, k)
 
@@ -223,9 +222,16 @@ def ils(p, k=5, tempo_max=60, estagnacao_max=500, fator_reset=0.2):
             melhor_s = s_candidata
             melhor_makespan = makespan_candidato
             iter_sem_melhora = 0
+
+            # elapsed = time.time() - inicio
+            # print(
+            #     f"[{elapsed:7.2f}s] \n"
+            #     f"NEW BEST = {melhor_makespan:.2f} \n"
+            #     f"perm = {melhor_perm}\n\n "
+            # )
         else:
             iter_sem_melhora += 1
-
+        
         # --- 7. Mecanismo de reset do platô ---
         if iter_sem_melhora > 0 and iter_sem_melhora % iter_reset == 0:
             perm_atual = melhor_perm.copy()
@@ -234,8 +240,17 @@ def ils(p, k=5, tempo_max=60, estagnacao_max=500, fator_reset=0.2):
 
     return melhor_perm, melhor_makespan
 
+def readFile(nome_arquivo):
+    with open(nome_arquivo, "r") as f:
+        linhas = [linha.strip() for linha in f if linha.strip()]
+
+    n = int(linhas[0])
+    p = [float(linhas[i]) for i in range(1, n + 1)]
+
+    return p
 
 p = [4, 2, 3, 5, 1]
+# p = readFile("adm_50_1.dat");
 
 melhor_perm, melhor_makespan = ils(p, k=3, tempo_max=5, estagnacao_max=100)
 

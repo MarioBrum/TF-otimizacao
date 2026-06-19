@@ -1,0 +1,5 @@
+solver("adm_100_4.dat")  
+# println(cl1)
+# solver("adm_1000_2.dat")  
+# println(cl1)
+# solver("adm_1000_4.dat")  
