@@ -2,10 +2,16 @@ import random
 import time
 
 
-def decodificacao_delta(permutacao, p, s_prefixo, i):
+def decodificacao_delta(permutacao, p, s_prefixo, i, inicio=None, tempo_max=None):
     s = dict(s_prefixo)
 
+    def tempo_esgotado():
+        return inicio is not None and tempo_max is not None and (time.time() - inicio) >= tempo_max
+
     for tarefa_k in permutacao[i:]:
+        if tempo_esgotado():
+            break
+
         p_k = p[tarefa_k]
 
         candidatos = {0.0}
@@ -24,6 +30,8 @@ def decodificacao_delta(permutacao, p, s_prefixo, i):
                 s[tarefa_k] = t
                 break
 
+    if not s:
+        return s, float('inf')
     makespan = max(s[tarefa] + p[tarefa] for tarefa in s)
     return s, makespan
 
@@ -52,9 +60,12 @@ def two_exchange(perm, i, j):
     return nova
 
 
-def busca_local_vnd(perm, p, s_inicial=None):
+def busca_local_vnd(perm, p, s_inicial=None, inicio=None, tempo_max=None):
     n = len(perm)
     melhor_perm = perm.copy()
+
+    def tempo_esgotado():
+        return inicio is not None and tempo_max is not None and (time.time() - inicio) >= tempo_max
 
     if s_inicial is None:
         s_melhor, melhor_makespan = decodificacao_gulosa(melhor_perm, p)
@@ -63,11 +74,11 @@ def busca_local_vnd(perm, p, s_inicial=None):
         melhor_makespan = max(s_melhor[t] + p[t] for t in s_melhor)
 
     algo_melhorou = True
-    while algo_melhorou:
+    while algo_melhorou and not tempo_esgotado():
         algo_melhorou = False
 
         melhorou_shift = True
-        while melhorou_shift:
+        while melhorou_shift and not tempo_esgotado():
             melhorou_shift = False
             for i in range(n):
                 for j in range(n):
@@ -78,18 +89,18 @@ def busca_local_vnd(perm, p, s_inicial=None):
                     vizinho = insertion_shift(melhor_perm, i, j)
 
                     s_prefixo = construir_prefixo(melhor_perm, s_melhor, corte)
-                    s_viz, mk = decodificacao_delta(vizinho, p, s_prefixo, corte)
+                    s_viz, mk = decodificacao_delta(vizinho, p, s_prefixo, corte, inicio=inicio, tempo_max=tempo_max)
 
                     if mk < melhor_makespan:
                         melhor_perm, s_melhor, melhor_makespan = vizinho, s_viz, mk
                         melhorou_shift = True
                         algo_melhorou = True
                         break
-                if melhorou_shift:
+                if melhorou_shift or tempo_esgotado():
                     break
 
         melhorou_exchange = True
-        while melhorou_exchange:
+        while melhorou_exchange and not tempo_esgotado():
             melhorou_exchange = False
             for i in range(n):
                 for j in range(i + 1, n):
@@ -97,14 +108,14 @@ def busca_local_vnd(perm, p, s_inicial=None):
                     vizinho = two_exchange(melhor_perm, i, j)
 
                     s_prefixo = construir_prefixo(melhor_perm, s_melhor, corte)
-                    s_viz, mk = decodificacao_delta(vizinho, p, s_prefixo, corte)
+                    s_viz, mk = decodificacao_delta(vizinho, p, s_prefixo, corte, inicio=inicio, tempo_max=tempo_max)
 
                     if mk < melhor_makespan:
                         melhor_perm, s_melhor, melhor_makespan = vizinho, s_viz, mk
                         melhorou_exchange = True
                         algo_melhorou = True
                         break
-                if melhorou_exchange:
+                if melhorou_exchange or tempo_esgotado():
                     break
 
     return melhor_perm, s_melhor, melhor_makespan
@@ -133,7 +144,7 @@ def ils(p, k=5, tempo_max=60, estagnacao_max=500, fator_reset=0.2):
     s_inicial_dec, makespan_inicial = decodificacao_gulosa(perm_inicial, p)
 
     # --- Busca local sobre a solução inicial ---
-    perm_atual, s_atual, makespan_atual = busca_local_vnd(perm_inicial, p, s_inicial=s_inicial_dec)
+    perm_atual, s_atual, makespan_atual = busca_local_vnd(perm_inicial, p, s_inicial=s_inicial_dec, inicio=inicio, tempo_max=tempo_max)
 
     melhor_perm = perm_atual.copy()
     melhor_s = s_atual
@@ -145,10 +156,10 @@ def ils(p, k=5, tempo_max=60, estagnacao_max=500, fator_reset=0.2):
         perm_perturbada, corte_pert = perturbacao(perm_atual, k)
 
         s_prefixo = construir_prefixo(perm_atual, s_atual, corte_pert)
-        s_pert, makespan_pert = decodificacao_delta(perm_perturbada, p, s_prefixo, corte_pert)
+        s_pert, makespan_pert = decodificacao_delta(perm_perturbada, p, s_prefixo, corte_pert, inicio=inicio, tempo_max=tempo_max)
 
         perm_candidata, s_candidata, makespan_candidato = busca_local_vnd(
-            perm_perturbada, p, s_inicial=s_pert
+            perm_perturbada, p, s_inicial=s_pert, inicio=inicio, tempo_max=tempo_max
         )
 
         if makespan_candidato <= makespan_atual:
@@ -170,7 +181,8 @@ def ils(p, k=5, tempo_max=60, estagnacao_max=500, fator_reset=0.2):
             makespan_atual = melhor_makespan
 
     tempo_execucao = time.time() - inicio
-    return makespan_inicial, melhor_makespan, tempo_execucao
+    parou_por_tempo = tempo_execucao >= tempo_max
+    return makespan_inicial, melhor_makespan, tempo_execucao, parou_por_tempo
 
 
 def readFile(nome_arquivo):
@@ -185,8 +197,15 @@ def readFile(nome_arquivo):
 # p = [4, 2, 3, 5, 1]
 p = readFile("adm_1000_1.dat");
 
-makespan_inicial, melhor_makespan, tempo_execucao = ils(p, k=3, tempo_max=5, estagnacao_max=100)
+# Roda por tempo_max=7200s ou até estagnacao_max=100 iterações consecutivas sem melhora
+# com 3 trocas na perturbação a cada iteração
+makespan_inicial, melhor_makespan, tempo_execucao, parou_por_tempo = ils(p, k=3, tempo_max=7200, estagnacao_max=100)
 
 print(f"Makespan inicial:  {makespan_inicial:.2f}")
 print(f"Melhor makespan:   {melhor_makespan:.2f}")
 print(f"Tempo de execução: {tempo_execucao:.4f}s")
+
+if parou_por_tempo:
+    print("Critério de parada: limite de tempo atingido.")
+else:
+    print("Critério de parada: estagnação (sem melhora por iterações consecutivas).")
