@@ -1,0 +1,12 @@
+=== Início: 2026-06-21 21:05:50 ===
+Instância: ./adm_1000_1.dat
+Parâmetros: k=3 tempo_max=7200 estagnacao_max=100
+
+Instância: ./adm_1000_1.dat (n=1000)
+Parâmetros: k=3, tempo_max=7200.0s, estagnacao_max=100
+Makespan inicial:  40093.00
+Melhor makespan:   40093.00
+Tempo de execução: 7200.1136s
+Critério de parada: limite de tempo atingido.
+
+=== Fim: 2026-06-21 23:05:50 (exit code: 0) ===
