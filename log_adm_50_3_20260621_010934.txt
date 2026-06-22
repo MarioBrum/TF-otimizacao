@@ -1,0 +1,4 @@
+Makespan inicial:  1644.00
+Melhor makespan:   1448.00
+Tempo de execução: 7200.0002s
+Critério de parada: limite de tempo atingido.

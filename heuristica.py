@@ -1,5 +1,6 @@
 import random
 import time
+import sys
 
 
 def decodificacao_delta(permutacao, p, s_prefixo, i, inicio=None, tempo_max=None):
@@ -36,12 +37,22 @@ def decodificacao_delta(permutacao, p, s_prefixo, i, inicio=None, tempo_max=None
     return s, makespan
 
 
+def _decodificacao_delta_segura(permutacao, p, s_prefixo, i, inicio=None, tempo_max=None):
+    """Wrapper que retorna inf se a decodificacao foi interrompida por tempo."""
+    s, mk = decodificacao_delta(permutacao, p, s_prefixo, i, inicio, tempo_max)
+    total_esperado = len(s_prefixo) + len(permutacao[i:])
+    if len(s) < total_esperado:
+        return s, float('inf')
+    return s, mk
+
+
 def decodificacao_gulosa(permutacao, p):
-    return decodificacao_delta(permutacao, p, s_prefixo={}, i=0)
+    # Sem limite de tempo: deve sempre completar para gerar solução inicial válida
+    return decodificacao_delta(permutacao, p, s_prefixo={}, i=0, inicio=None, tempo_max=None)
 
 
 def construir_prefixo(permutacao, s, i):
-    return {tarefa: s[tarefa] for tarefa in permutacao[:i]}
+    return {tarefa: s[tarefa] for tarefa in permutacao[:i] if tarefa in s}
 
 def solucao_inicial(p):
     return sorted(range(len(p)), key=lambda i: p[i], reverse=True)
@@ -71,7 +82,17 @@ def busca_local_vnd(perm, p, s_inicial=None, inicio=None, tempo_max=None):
         s_melhor, melhor_makespan = decodificacao_gulosa(melhor_perm, p)
     else:
         s_melhor = s_inicial
-        melhor_makespan = max(s_melhor[t] + p[t] for t in s_melhor)
+        # CORREÇÃO: s_inicial pode vir incompleto (decodificação interrompida
+        # por tempo esgotado em uma etapa anterior, ex: decodificação da
+        # perturbação no ILS). Calcular o makespan apenas sobre as tarefas
+        # presentes nesse caso produziria um valor menor que o makespan real
+        # da instância completa (solução fisicamente inválida sendo tratada
+        # como válida). Tratamos esse caso como inf, igual a uma decodificação
+        # que não terminou.
+        if len(s_melhor) < n:
+            melhor_makespan = float('inf')
+        else:
+            melhor_makespan = max(s_melhor[t] + p[t] for t in s_melhor)
 
     algo_melhorou = True
     while algo_melhorou and not tempo_esgotado():
@@ -89,7 +110,7 @@ def busca_local_vnd(perm, p, s_inicial=None, inicio=None, tempo_max=None):
                     vizinho = insertion_shift(melhor_perm, i, j)
 
                     s_prefixo = construir_prefixo(melhor_perm, s_melhor, corte)
-                    s_viz, mk = decodificacao_delta(vizinho, p, s_prefixo, corte, inicio=inicio, tempo_max=tempo_max)
+                    s_viz, mk = _decodificacao_delta_segura(vizinho, p, s_prefixo, corte, inicio=inicio, tempo_max=tempo_max)
 
                     if mk < melhor_makespan:
                         melhor_perm, s_melhor, melhor_makespan = vizinho, s_viz, mk
@@ -108,7 +129,7 @@ def busca_local_vnd(perm, p, s_inicial=None, inicio=None, tempo_max=None):
                     vizinho = two_exchange(melhor_perm, i, j)
 
                     s_prefixo = construir_prefixo(melhor_perm, s_melhor, corte)
-                    s_viz, mk = decodificacao_delta(vizinho, p, s_prefixo, corte, inicio=inicio, tempo_max=tempo_max)
+                    s_viz, mk = _decodificacao_delta_segura(vizinho, p, s_prefixo, corte, inicio=inicio, tempo_max=tempo_max)
 
                     if mk < melhor_makespan:
                         melhor_perm, s_melhor, melhor_makespan = vizinho, s_viz, mk
@@ -156,7 +177,7 @@ def ils(p, k=5, tempo_max=60, estagnacao_max=500, fator_reset=0.2):
         perm_perturbada, corte_pert = perturbacao(perm_atual, k)
 
         s_prefixo = construir_prefixo(perm_atual, s_atual, corte_pert)
-        s_pert, makespan_pert = decodificacao_delta(perm_perturbada, p, s_prefixo, corte_pert, inicio=inicio, tempo_max=tempo_max)
+        s_pert, makespan_pert = _decodificacao_delta_segura(perm_perturbada, p, s_prefixo, corte_pert, inicio=inicio, tempo_max=tempo_max)
 
         perm_candidata, s_candidata, makespan_candidato = busca_local_vnd(
             perm_perturbada, p, s_inicial=s_pert, inicio=inicio, tempo_max=tempo_max
@@ -194,18 +215,34 @@ def readFile(nome_arquivo):
 
     return p
 
-# p = [4, 2, 3, 5, 1]
-p = readFile("adm_1000_1.dat");
+# CORREÇÃO: nome de arquivo e parâmetros agora podem ser passados via linha de
+# comando, permitindo rodar a mesma heuristica.py para várias instâncias sem
+# editar o código (necessário para execução em lote/paralela). Sem argumentos,
+# mantém o comportamento original (adm_50_1.dat, k=3, tempo_max=7200,
+# estagnacao_max=100).
+if __name__ == "__main__":
+    data_file = sys.argv[1] if len(sys.argv) > 1 else "adm_50_1.dat"
+    k = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+    tempo_max = float(sys.argv[3]) if len(sys.argv) > 3 else 7200
+    estagnacao_max = int(sys.argv[4]) if len(sys.argv) > 4 else 100
 
-# Roda por tempo_max=7200s ou até estagnacao_max=100 iterações consecutivas sem melhora
-# com 3 trocas na perturbação a cada iteração
-makespan_inicial, melhor_makespan, tempo_execucao, parou_por_tempo = ils(p, k=3, tempo_max=7200, estagnacao_max=100)
+    p = readFile(data_file)
 
-print(f"Makespan inicial:  {makespan_inicial:.2f}")
-print(f"Melhor makespan:   {melhor_makespan:.2f}")
-print(f"Tempo de execução: {tempo_execucao:.4f}s")
+    print(f"Instância: {data_file} (n={len(p)})")
+    print(f"Parâmetros: k={k}, tempo_max={tempo_max}s, estagnacao_max={estagnacao_max}")
 
-if parou_por_tempo:
-    print("Critério de parada: limite de tempo atingido.")
-else:
-    print("Critério de parada: estagnação (sem melhora por iterações consecutivas).")
+    makespan_inicial, melhor_makespan, tempo_execucao, parou_por_tempo = ils(
+        p, k=k, tempo_max=tempo_max, estagnacao_max=estagnacao_max
+    )
+
+    print(f"Makespan inicial:  {makespan_inicial:.2f}")
+    print(f"Melhor makespan:   {melhor_makespan:.2f}")
+    print(f"Tempo de execução: {tempo_execucao:.4f}s")
+
+    if melhor_makespan == float('inf'):
+        print("AVISO: nenhuma solução completa e viável foi encontrada dentro do tempo limite.")
+
+    if parou_por_tempo:
+        print("Critério de parada: limite de tempo atingido.")
+    else:
+        print("Critério de parada: estagnação (sem melhora por iterações consecutivas).")
